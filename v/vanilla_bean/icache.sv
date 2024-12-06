@@ -39,6 +39,8 @@ module icache
     , input [pc_width_lp-1:0] pc_i
     , input [pc_width_lp-1:0] jalr_prediction_i
     , output [RV32_instr_width_gp-1:0] instr_o
+    , output [RV32_instr_width_gp-1:0] instr_2_o
+    , output instr_2_o_v
     , output [pc_width_lp-1:0] pred_or_jump_addr_o
     , output [pc_width_lp-1:0] pc_r_o
     , output icache_miss_o
@@ -246,6 +248,9 @@ module icache
   logic [jal_pc_high_width_lp-1:0] jal_pc_high_out;
 
 
+  instruction_s instr_out_2;
+  assign instr_out_2 = icache_data_lo.instr[pc_r[0+:icache_block_offset_width_lp] + 1];
+
   // We are saving the carry-out when we are partially computing the
   // lower-portion jump addr, as we write to the icache.
   // When we are calculating the full jump addr, as we read back from the icache,
@@ -288,6 +293,53 @@ module icache
   // assign outputs.
   assign instr_o = instr_out;
   assign pc_r_o = pc_r;
+
+  // Second instruction output.
+  logic instr_fp, instr_2_fp;
+  assign instr_fp = instr_out.op == `RV32_OP_FP || instr_out.op == `RV32_LOAD_FP || instr_out.op == `RV32_STORE_FP;
+  assign instr_2_fp = instr_out_2.op == `RV32_OP_FP || instr_out_2.op == `RV32_LOAD_FP || instr_out_2.op == `RV32_STORE_FP;
+
+  // Op Writes RF -- register file write operation
+  logic write_rd;
+  always_comb begin
+    if (instr_out.rd == 0) begin
+      write_rd = 1'b0; // reg 0 is always 0
+    end
+    else begin
+      unique casez (instr_out.op)
+      `RV32_LUI_OP, `RV32_AUIPC_OP,
+      `RV32_JAL_OP, `RV32_JALR_OP,
+      `RV32_LOAD, `RV32_OP,
+      `RV32_OP_IMM, `RV32_AMO_OP: begin
+        write_rd = 1'b1;
+      end
+      `RV32_OP_FP: begin
+        write_rd = 
+        (instr_out.funct7 == `RV32_FCMP_S_FUN7) // FEQ, FLT, FLE
+        | ((instruction_i.funct7 == `RV32_FCLASS_S_FUN7) & (instr_out.rs2 == 5'b00000)) // FCLASS, FMV.X.W
+        | ((instruction_i.funct7 == `RV32_FCVT_S_F2I_FUN7)); // FCVT.W.S, FCVT.WU.S
+      end
+      `RV32_SYSTEM: begin
+        write_rd = 1'b1; // CSRRW, CSRRS
+      end
+      default: begin
+        write_rd = 1'b0;
+      end
+      endcase
+    end
+  end
+
+  assign instr_2_od = instr_out_2;
+  // Current cannot be a branch instruction
+  // Current and next cannot both be int or fp ops
+  // Output of current cannot be the input for the FP load store
+  // Next instruction cannot be wrapped around to the beginning of the cache line
+  assign instr_2_o_v = ~(
+    is_jal_instr | is_jalr_instr | instr_out.op == `RV32_BRANCH
+    | instr_fp != instr_2_fp
+    | instr_out.rd == instr_out_2.rs1 && write_rd && (instr_out_2.op == `RV32_LOAD_FP || instr_out_2.op == `RV32_STORE_FP)
+    | pc_r[0+:icache_block_offset_width_lp] + 1 == 0
+  );
 
   // this is word addr.
   assign pred_or_jump_addr_o = is_jal_instr
