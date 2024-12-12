@@ -152,7 +152,7 @@ module vanilla_core
   logic [data_width_p-1:0] icache_winstr;
 
   logic [pc_width_lp-1:0] pc_n, pc_r;
-  instruction_s instruction;
+  instruction_s instruction, finstruction, instruction1, instruction2;
   logic icache_miss;
   logic icache_flush;
   logic icache_flush_r_lo;
@@ -182,15 +182,14 @@ module vanilla_core
     ,.pc_i(pc_n)
     ,.jalr_prediction_i(jalr_prediction)
 
-    ,.instr_o(instruction)
+    ,.instr_1_o(instruction1)
+    ,.instr_2_o(instruction2)
     ,.pred_or_jump_addr_o(pred_or_jump_addr)
     ,.pc_r_o(pc_r)
     ,.icache_miss_o(icache_miss)
     ,.icache_flush_r_o(icache_flush_r_lo)
     ,.branch_predicted_taken_o(icache_branch_predicted_taken_lo)
   );
-
-  wire [pc_width_lp-1:0] pc_plus4 = pc_r + 1'b1;
 
   // ifetch counter
   logic [lg_icache_block_size_in_words_lp-1:0] ifetch_count_r;
@@ -214,15 +213,55 @@ module vanilla_core
 
   // instruction decode
   //
-  decode_s decode;
-  fp_decode_s fp_decode;
+  logic norm_op, float_op;
+  decode_s decode, fdecode, decode1, decode2;
+  fp_decode_s fp_decode, fp_decode1, fp_decode2;
 
-  cl_decode decode0 (
-    .instruction_i(instruction)
-    ,.decode_o(decode)
-    ,.fp_decode_o(fp_decode)
+  cl_decode cl_decode1 (
+    .instruction_i(instruction1)
+    ,.decode_o(decode1)
+    ,.fp_decode_o(fp_decode1)
   ); 
 
+  cl_decode cl_decode2 (
+    .instruction_i(instruction2)
+    ,.decode_o(decode2)
+    ,.fp_decode_o(fp_decode2)
+  );
+
+  always_comb begin
+    decode = {0};
+    instruction = {0};
+    fdecode = {0};
+    finstruction = {0};
+    fp_decode = {0};
+    if (decode1.is_fp_op) begin
+      float_op = 1;
+      fdecode = decode1;
+      fp_decode = fp_decode1;
+      finstruction = instruction1;
+
+      norm_op = 0; // ~decode2.is_fp_op;
+      if (~decode2.is_fp_op) begin
+        decode = decode2;
+        instruction = instruction2;
+      end
+    end else begin
+      norm_op = 1;
+      decode = decode1;
+      instruction = instruction1;
+
+      float_op = 0; // decode2.is_fp_op;
+      if (decode2.is_fp_op) begin
+        fdecode = decode2;
+        fp_decode = fp_decode2;
+        finstruction = instruction2;
+      end
+    end
+  end
+
+  // TODO: Figure this out
+  wire [pc_width_lp-1:0] pc_plus4 = pc_r + (0 ? 2'b01 : 2'b01);
 
   //////////////////////////////
   //                          //
@@ -288,8 +327,8 @@ module vanilla_core
     ,.src_id_i({id_r.instruction.rs2, id_r.instruction.rs1})
     ,.dest_id_i(id_r.instruction.rd)
 
-    ,.op_reads_rf_i({id_r.decode.read_rs2, id_r.decode.read_rs1})
-    ,.op_writes_rf_i(id_r.decode.write_rd)
+    ,.op_reads_rf_i({id_r.norm_op && id_r.decode.read_rs2, id_r.norm_op && id_r.decode.read_rs1})
+    ,.op_writes_rf_i(id_r.norm_op && id_r.decode.write_rd)
 
     ,.score_i(int_sb_score)
     ,.score_id_i(int_sb_score_id)
@@ -346,11 +385,11 @@ module vanilla_core
     .clk_i(clk_i)
     ,.reset_i(reset_i)
   
-    ,.src_id_i({id_r.instruction[31:27], id_r.instruction.rs2, id_r.instruction.rs1})
-    ,.dest_id_i(id_r.instruction.rd)
+    ,.src_id_i({id_r.finstruction[31:27], id_r.finstruction.rs2, id_r.finstruction.rs1})
+    ,.dest_id_i(id_r.finstruction.rd)
 
-    ,.op_reads_rf_i({id_r.decode.read_frs3, id_r.decode.read_frs2, id_r.decode.read_frs1})
-    ,.op_writes_rf_i(id_r.decode.write_frd)
+    ,.op_reads_rf_i({id_r.float_op && id_r.fdecode.read_frs3, id_r.float_op && id_r.fdecode.read_frs2, id_r.float_op && id_r.fdecode.read_frs1})
+    ,.op_writes_rf_i(id_r.float_op && id_r.fdecode.write_frd)
 
     ,.score_i(float_sb_score)
     ,.score_id_i(float_sb_score_id)
@@ -480,9 +519,9 @@ module vanilla_core
 
   // calculate mem address offset
   //
-  wire [RV32_Iimm_width_gp-1:0] mem_addr_op2 = id_r.decode.is_store_op
+  wire [RV32_Iimm_width_gp-1:0] mem_addr_op2 = id_r.norm_op && id_r.decode.is_store_op
     ? `RV32_Simm_12extract(id_r.instruction)
-    : (id_r.decode.is_load_op
+    : (id_r.norm_op && id_r.decode.is_load_op
       ? `RV32_Iimm_12extract(id_r.instruction)
       : '0);
 
@@ -609,7 +648,7 @@ module vanilla_core
     ? rs1_forward_val
     : int_rf_rdata[0];
   
-  assign rs2_val_to_exe = id_r.decode.read_frs2
+  assign rs2_val_to_exe = id_r.fdecode.read_frs2
     ? fsw_data
     : (rs2_forward_v
       ? rs2_forward_val
@@ -1275,7 +1314,11 @@ module vanilla_core
       pred_or_jump_addr: {{(data_width_p-pc_width_lp-2){1'b0}}, pred_or_jump_addr, 2'b0},
       instruction: instruction,
       decode: decode,
+      norm_op: norm_op,
+      finstruction: finstruction,
+      fdecode: fdecode,
       fp_decode: fp_decode,
+      float_op: float_op,
       icache_miss: 1'b0,
       valid: 1'b1,
       branch_predicted_taken:  icache_branch_predicted_taken_lo
@@ -1304,7 +1347,11 @@ module vanilla_core
           pred_or_jump_addr: '0,
           instruction: '0,
           decode: '0,
+          norm_op: '0,
+          finstruction: '0,
+          fdecode: '0,
           fp_decode: '0,
+          float_op: '0,
           icache_miss: 1'b1,
           valid: 1'b0,
           branch_predicted_taken: 1'b0
@@ -1969,7 +2016,8 @@ module vanilla_core
         assert(fdiv_fsqrt_ready_and_lo) else $error("fdiv_fsqrt_op issued, when fdiv_fsqrt is not ready.");
       end
 
-      assert(~id_r.decode.unsupported) else $error("Unsupported instruction: %8x", id_r.instruction);
+      assert(~(id_r.norm_op && id_r.decode.unsupported)) else $error("Unsupported instruction: %8x", id_r.instruction);
+      assert(~(id_r.float_op && id_r.fdecode.unsupported)) else $error("Unsupported float instruction: %8x", id_r.finstruction);
     end
   end
   // synopsys translate_on
