@@ -253,14 +253,15 @@ module vanilla_core
     .width_p(data_width_p)
     ,.els_p(RV32_reg_els_gp)
     ,.num_rs_p(2)
+    ,.num_ws_p(1)
     ,.x0_tied_to_zero_p(1)
   ) int_rf (
     .clk_i(clk_i)
     ,.reset_i(reset_i)
 
-    ,.w_v_i(int_rf_wen)
-    ,.w_addr_i(int_rf_waddr)
-    ,.w_data_i(int_rf_wdata)
+    ,.w_v_i({int_rf_wen})
+    ,.w_addr_i({int_rf_waddr})
+    ,.w_data_i({int_rf_wdata})
 
     ,.r_v_i(int_rf_read)
     ,.r_addr_i({instruction.rs2, instruction.rs1})
@@ -314,14 +315,15 @@ module vanilla_core
     .width_p(fpu_recoded_data_width_gp)
     ,.els_p(RV32_reg_els_gp)
     ,.num_rs_p(3)
+    ,.num_ws_p(1)
     ,.x0_tied_to_zero_p(0)
   ) float_rf (
     .clk_i(clk_i)
     ,.reset_i(reset_i)
 
-    ,.w_v_i(float_rf_wen)
-    ,.w_addr_i(float_rf_waddr)
-    ,.w_data_i(float_rf_wdata)
+    ,.w_v_i({float_rf_wen})
+    ,.w_addr_i({float_rf_waddr})
+    ,.w_data_i({float_rf_wdata})
 
     ,.r_v_i(float_rf_read)
     ,.r_addr_i({instruction[31:27], instruction.rs2, instruction.rs1})

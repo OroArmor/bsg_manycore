@@ -12,6 +12,7 @@ module regfile_synth
   #(`BSG_INV_PARAM(width_p)
     , `BSG_INV_PARAM(els_p)
     , `BSG_INV_PARAM(num_rs_p)
+    , `BSG_INV_PARAM(num_ws_p)
     , `BSG_INV_PARAM(x0_tied_to_zero_p)
 
     , localparam addr_width_lp=`BSG_SAFE_CLOG2(els_p)
@@ -20,9 +21,9 @@ module regfile_synth
     input clk_i
     , input reset_i
 
-    , input w_v_i
-    , input [addr_width_lp-1:0] w_addr_i
-    , input [width_p-1:0] w_data_i
+    , input [num_ws_p-1:0] w_v_i
+    , input [num_ws_p-1:0][addr_width_lp-1:0] w_addr_i
+    , input [num_ws_p-1:0][width_p-1:0] w_data_i
     
     , input [num_rs_p-1:0] r_v_i
     , input [num_rs_p-1:0][addr_width_lp-1:0] r_addr_i
@@ -48,8 +49,9 @@ module regfile_synth
       assign r_data_o[i] = (r_addr_r[i] == '0)? '0 : mem_r[r_addr_r[i]];
 
     always_ff @ (posedge clk_i)
-      if (w_v_i & (w_addr_i != '0))
-        mem_r[w_addr_i] <= w_data_i;
+      for (integer i = 0; i < num_ws_p; i++)
+        if (w_v_i[i] & (w_addr_i[i] != '0))
+            mem_r[w_addr_i[i]] <= w_data_i[i];
 
 
   end
@@ -61,8 +63,9 @@ module regfile_synth
       assign r_data_o[i] = mem_r[r_addr_r[i]];
 
     always_ff @ (posedge clk_i)
-      if (w_v_i)
-        mem_r[w_addr_i] <= w_data_i;
+      for (integer i = 0; i < num_ws_p; i++)
+        if (w_v_i[i])
+          mem_r[w_addr_i[i]] <= w_data_i[i];
     
   end
 
