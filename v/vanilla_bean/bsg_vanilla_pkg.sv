@@ -91,8 +91,10 @@ typedef enum logic [1:0] {
 typedef struct packed {
   // int regfile
   logic read_rs1;
+  logic read_rs1_f;
   logic read_rs2;
   logic write_rd;
+  logic write_rd_f;
 
   // Load & Store
   logic is_load_op;       // Op loads data from memory
@@ -130,8 +132,10 @@ typedef struct packed {
   logic is_fp_op;           // goes into FP_EXE
   logic read_frs1;          // reads rs1 of FP regfile
   logic read_frs2;          // reads rs2 of FP regfile
+  logic read_frs2_s;        // reads rs2 of FP regfile for a store
   logic read_frs3;          // reads rs3 of FP regfile
   logic write_frd;    // writes back to FP regfile
+  logic write_frd_l;  // writes to the FP from a load
 
   // CSR
   logic is_csr_op;

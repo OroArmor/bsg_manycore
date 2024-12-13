@@ -25,6 +25,8 @@ import bsg_manycore_pkg::*;
 
 // Op Writes RF -- register file write operation
 always_comb begin
+  decode_o.write_rd = 1'b0;
+  decode_o.write_rd_f = 1'b0;
   if (instruction_i.rd == 0) begin
     decode_o.write_rd = 1'b0; // reg 0 is always 0
   end
@@ -37,7 +39,7 @@ always_comb begin
         decode_o.write_rd = 1'b1;
       end
       `RV32_OP_FP: begin
-        decode_o.write_rd = 
+        decode_o.write_rd_f = 
           (instruction_i.funct7 == `RV32_FCMP_S_FUN7) // FEQ, FLT, FLE
           | ((instruction_i.funct7 == `RV32_FCLASS_S_FUN7) & (instruction_i.rs2 == 5'b00000)) // FCLASS, FMV.X.W
           | ((instruction_i.funct7 == `RV32_FCVT_S_F2I_FUN7)); // FCVT.W.S, FCVT.WU.S
@@ -54,6 +56,8 @@ end
 
 // declares if OP reads from first port of register file
 always_comb begin
+  decode_o.read_rs1 = 1'b0;
+  decode_o.read_rs1_f = 1'b0;
   unique casez (instruction_i.op)
     `RV32_JALR_OP, `RV32_BRANCH,
     `RV32_LOAD, `RV32_STORE,
@@ -62,7 +66,7 @@ always_comb begin
       decode_o.read_rs1 = 1'b1;
     end
    `RV32_OP_FP: begin
-     decode_o.read_rs1 = 
+     decode_o.read_rs1_f = 
        (instruction_i.funct7 == `RV32_FCVT_S_I2F_FUN7) // FCVT.S.W, FCVT.S.WU
        | (instruction_i.funct7 == `RV32_FMV_W_X_FUN7); // FMV.W.X
     end
@@ -312,19 +316,11 @@ always_comb begin
     end
     // Float load
     `RV32_FLW_S: begin
-      decode_o.read_frs1 = 1'b0;
-      decode_o.read_frs2 = 1'b0;
-      decode_o.read_frs3 = 1'b0;
-      decode_o.write_frd = 1'b1;
-      decode_o.is_fp_op = 1'b0;
+      decode_o.write_frd_l = 1'b1;
     end
     // Float store
     `RV32_FSW_S: begin
-      decode_o.read_frs1 = 1'b0;
-      decode_o.read_frs2 = 1'b1;
-      decode_o.read_frs3 = 1'b0;
-      decode_o.write_frd = 1'b0;
-      decode_o.is_fp_op = 1'b0;
+      decode_o.read_frs2_s = 1'b1;
     end
     // FMA
     `RV32_FMADD_S, `RV32_FMSUB_S, `RV32_FNMSUB_S, `RV32_FNMADD_S: begin
