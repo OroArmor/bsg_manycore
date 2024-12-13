@@ -216,16 +216,9 @@ typedef struct packed
 {
     logic [RV32_reg_data_width_gp-1:0] pc_plus4;          // PC + 4
     logic [RV32_reg_data_width_gp-1:0] pred_or_jump_addr; // Jump target PC
-
     instruction_s                      instruction;       // Instruction being executed
     decode_s                           decode;            // Decode signals
-    logic                              norm_op;
-
-    instruction_s                      finstruction;       // Float Instruction being executed
-    decode_s                           fdecode;            // Decode signals
     fp_decode_s                        fp_decode;
-    logic                              float_op;
-
     logic                              icache_miss;
     logic                              valid;             // valid instruction in ID
     logic                              branch_predicted_taken;
