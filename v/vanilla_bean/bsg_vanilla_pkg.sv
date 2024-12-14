@@ -93,7 +93,7 @@ typedef struct packed {
   logic read_rs1; // normal op reads from read port 1
   logic read_rs1_f; // FP op reads from read port 1
   logic read_rs2; // normal op reads from read port 2
-  logic write_rd; // normal op writes to int reg file (can't affect read_rs1 and read_rs2, that would be two int ops)
+  logic write_rd; // normal op writes to int reg file
   logic write_rd_f; // FP op writes to int reg file
 
   // Load & Store
