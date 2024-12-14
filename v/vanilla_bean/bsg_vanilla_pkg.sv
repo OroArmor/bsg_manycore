@@ -90,11 +90,11 @@ typedef enum logic [1:0] {
 
 typedef struct packed {
   // int regfile
-  logic read_rs1;
-  logic read_rs1_f;
-  logic read_rs2;
-  logic write_rd;
-  logic write_rd_f;
+  logic read_rs1; // normal op reads from read port 1
+  logic read_rs1_f; // FP op reads from read port 1
+  logic read_rs2; // normal op reads from read port 2
+  logic write_rd; // normal op writes to int reg file (can't affect read_rs1 and read_rs2, that would be two int ops)
+  logic write_rd_f; // FP op writes to int reg file
 
   // Load & Store
   logic is_load_op;       // Op loads data from memory
