@@ -159,6 +159,7 @@ VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/network_tx.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/vanilla_core.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/alu.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/cl_decode.sv
+VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/equality_matrix.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/fpu_float.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/fpu_float_fma.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/fpu_float_fma_round.sv
@@ -177,6 +178,7 @@ VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/regfile.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/regfile_synth.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/regfile_hard.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/scoreboard.sv
+VSOURCES += $(BSG_MANYCORE_DIR)/v/vanilla_bean/two_decode.sv
 
 VSOURCES += $(BSG_MANYCORE_DIR)/v/bsg_manycore_pod_ruche_array.sv
 VSOURCES += $(BSG_MANYCORE_DIR)/v/bsg_manycore_pod_ruche.sv

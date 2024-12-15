@@ -221,6 +221,7 @@ typedef struct packed
     logic [RV32_reg_data_width_gp-1:0] pc_plus4;          // PC + 4
     logic [RV32_reg_data_width_gp-1:0] pred_or_jump_addr; // Jump target PC
     instruction_s                      instruction;       // Instruction being executed
+    instruction_s                      instruction_f;     // Float instruction
     decode_s                           decode;            // Decode signals
     fp_decode_s                        fp_decode;
     logic                              icache_miss;
@@ -234,6 +235,7 @@ typedef struct packed
     logic [RV32_reg_data_width_gp-1:0] pc_plus4;          // PC + 4
     logic [RV32_reg_data_width_gp-1:0] pred_or_jump_addr; // Jump target PC
     instruction_s                      instruction;       // Instruction being executed
+    instruction_s                      instruction_f;     // Float instruction
     decode_s                           decode;            // Decode signals
     logic [RV32_reg_data_width_gp-1:0] rs1_val;           // RF output data from RS1 address
     logic [RV32_reg_data_width_gp-1:0] rs2_val;           // RF output data from RS2 address
@@ -249,8 +251,12 @@ typedef struct packed
 // Memory stage signals
 typedef struct packed {
     logic [RV32_reg_addr_width_gp-1:0] rd_addr;
+    logic [RV32_reg_addr_width_gp-1:0] rd_addr_f;
+    logic [RV32_reg_addr_width_gp-1:0] rd_addr_l;
     logic write_rd;
+    logic write_rd_f;
     logic write_frd;
+    logic write_frd_l;
     logic is_byte_op;
     logic is_hex_op;
     logic is_load_unsigned;
@@ -266,7 +272,11 @@ typedef struct packed {
 // RF write back stage signals
 typedef struct packed {
     logic                              write_rd;
+    logic                              write_rd_f;
+    logic                              write_rd_l;
     logic [RV32_reg_addr_width_gp-1:0] rd_addr;
+    logic [RV32_reg_addr_width_gp-1:0] rd_addr_f;
+    logic [RV32_reg_addr_width_gp-1:0] rd_addr_l;
     logic                              icache_miss;
     logic clear_sb;
 } wb_ctrl_signals_s;
@@ -278,6 +288,7 @@ typedef struct packed {
 // FP Execute stage signals
 typedef struct packed {
   logic [RV32_reg_addr_width_gp-1:0] rd;
+  logic [RV32_reg_addr_width_gp-1:0] rd_f;
   fp_decode_s fp_decode;
   frm_e rm;
 } fp_exe_ctrl_signals_s;

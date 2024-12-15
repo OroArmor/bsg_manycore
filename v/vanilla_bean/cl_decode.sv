@@ -254,6 +254,8 @@ always_comb begin
   decode_o.read_frs2 = 1'b0;
   decode_o.read_frs3 = 1'b0;
   decode_o.write_frd = 1'b0;
+  decode_o.write_frd_l = 1'b0;
+  decode_o.read_frs2_s = 1'b0;
   decode_o.is_fp_op = 1'b0;
   unique casez (instruction_i)
     // Rtype float instr

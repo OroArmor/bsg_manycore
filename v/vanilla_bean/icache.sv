@@ -39,6 +39,8 @@ module icache
     , input [pc_width_lp-1:0] pc_i
     , input [pc_width_lp-1:0] jalr_prediction_i
     , output [RV32_instr_width_gp-1:0] instr_o
+    , output [RV32_instr_width_gp-1:0] instr_o_2
+    , output                           instr_o_2_v
     , output [pc_width_lp-1:0] pred_or_jump_addr_o
     , output [pc_width_lp-1:0] pc_r_o
     , output icache_miss_o
@@ -287,6 +289,8 @@ module icache
 
   // assign outputs.
   assign instr_o = instr_out;
+  assign instr_o_2 = icache_data_lo.instr[pc_r[0+:icache_block_offset_width_lp] + 1];
+  assign instr_o_2_v = (pc_r[0+:icache_block_offset_width_lp] + 1) != '0;
   assign pc_r_o = pc_r;
 
   // this is word addr.

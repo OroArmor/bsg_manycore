@@ -152,7 +152,7 @@ module vanilla_core
   logic [data_width_p-1:0] icache_winstr;
 
   logic [pc_width_lp-1:0] pc_n, pc_r;
-  instruction_s instruction;
+  instruction_s instruction_1, instruction_2, instruction, instruction_f;
   logic icache_miss;
   logic icache_flush;
   logic icache_flush_r_lo;
@@ -161,7 +161,7 @@ module vanilla_core
   logic [pc_width_lp-1:0] jalr_prediction; 
   logic [pc_width_lp-1:0] pred_or_jump_addr; 
  
- 
+  logic instruction_2_v;
   icache #(
     .icache_tag_width_p(icache_tag_width_p)
     ,.icache_entries_p(icache_entries_p)
@@ -182,7 +182,9 @@ module vanilla_core
     ,.pc_i(pc_n)
     ,.jalr_prediction_i(jalr_prediction)
 
-    ,.instr_o(instruction)
+    ,.instr_o(instruction_1)
+    ,.instr_o_2(instruction_2)
+    ,.instr_o_2_v(instruction_2_v)
     ,.pred_or_jump_addr_o(pred_or_jump_addr)
     ,.pc_r_o(pc_r)
     ,.icache_miss_o(icache_miss)
@@ -190,7 +192,31 @@ module vanilla_core
     ,.branch_predicted_taken_o(icache_branch_predicted_taken_lo)
   );
 
-  wire [pc_width_lp-1:0] pc_plus4 = pc_r + 1'b1;
+  // instruction decode
+  //
+  decode_s decode;
+  fp_decode_s fp_decode;
+
+  // cl_decode decode0 (
+  //   .instruction_i(instruction)
+  //   ,.decode_o(decode)
+  //   ,.fp_decode_o(fp_decode)
+  // ); 
+
+  logic dual_issue;
+
+  two_decode decode0 (
+    .instruction1_i(instruction_1)
+    ,.instruction2_i(instruction_2)
+    ,.instruction2_i_v(instruction_2_v)
+    ,.instruction(instruction)
+    ,.instruction_f(instruction_f)
+    ,.decode_o(decode)
+    ,.fp_decode_o(fp_decode)
+    ,.dual_issue_o(dual_issue)
+  );
+
+  wire [pc_width_lp-1:0] pc_plus4 = pc_r + (dual_issue? 2'b10 : 2'b1);
 
   // ifetch counter
   logic [lg_icache_block_size_in_words_lp-1:0] ifetch_count_r;
@@ -212,16 +238,6 @@ module vanilla_core
   wire [data_width_p-1:0] exe_pc = (exe_r.pc_plus4 - 'd4);
   // synopsys translate_on
 
-  // instruction decode
-  //
-  decode_s decode;
-  fp_decode_s fp_decode;
-
-  cl_decode decode0 (
-    .instruction_i(instruction)
-    ,.decode_o(decode)
-    ,.fp_decode_o(fp_decode)
-  ); 
 
 
   //////////////////////////////
@@ -246,7 +262,7 @@ module vanilla_core
   logic [reg_addr_width_lp-1:0] int_rf_waddr;
   logic [data_width_p-1:0] int_rf_wdata;
  
-  logic [1:0] int_rf_read;
+  logic [2:0] int_rf_read;
   logic [1:0][data_width_p-1:0] int_rf_rdata;
 
   regfile #(
@@ -279,18 +295,18 @@ module vanilla_core
 
   scoreboard #(
     .els_p(RV32_reg_els_gp)
-    ,.num_src_port_p(2)
-    ,.num_clear_port_p(1)
+    ,.num_src_port_p(3)
+    ,.num_clear_port_p(2)
     ,.x0_tied_to_zero_p(1)
   ) int_sb (
     .clk_i(clk_i)
     ,.reset_i(reset_i)
   
-    ,.src_id_i({id_r.instruction.rs2, id_r.instruction.rs1})
-    ,.dest_id_i(id_r.instruction.rd)
+    ,.src_id_i({id_r.instruction.rs2, id_r.instruction.rs1, id_r.instruction_f.rs1})
+    ,.dest_id_i({id_r.instruction.rd, id_r.instruction.rd})
 
-    ,.op_reads_rf_i({id_r.decode.read_rs2, id_r.decode.read_rs1})
-    ,.op_writes_rf_i(id_r.decode.write_rd)
+    ,.op_reads_rf_i({id_r.decode.read_rs2, id_r.decode.read_rs1, id_r.decode.read_rs1_f})
+    ,.op_writes_rf_i({id_r.decode.write_rd, id_r.decode.write_rd_f})
 
     ,.score_i(int_sb_score)
     ,.score_id_i(int_sb_score_id)
@@ -326,7 +342,7 @@ module vanilla_core
     ,.w_data_i({float_rf_wdata})
 
     ,.r_v_i(float_rf_read)
-    ,.r_addr_i({instruction[31:27], instruction.rs2, instruction.rs1})
+    ,.r_addr_i({instruction_f[31:27], instruction_f.rs2, instruction_f.rs1})
     ,.r_data_o(float_rf_rdata)
   );
 
@@ -348,8 +364,8 @@ module vanilla_core
     .clk_i(clk_i)
     ,.reset_i(reset_i)
   
-    ,.src_id_i({id_r.instruction[31:27], id_r.instruction.rs2, id_r.instruction.rs1})
-    ,.dest_id_i(id_r.instruction.rd)
+    ,.src_id_i({id_r.instruction_f[31:27], id_r.instruction_f.rs2, id_r.instruction_f.rs1})
+    ,.dest_id_i(id_r.instruction_f.rd)
 
     ,.op_reads_rf_i({id_r.decode.read_frs3, id_r.decode.read_frs2, id_r.decode.read_frs1})
     ,.op_writes_rf_i(id_r.decode.write_frd)
@@ -851,7 +867,7 @@ module vanilla_core
     ,.imul_v_i(exe_r.decode.is_imul_op)
     ,.imul_rs1_i(exe_r.rs1_val)
     ,.imul_rs2_i(exe_r.rs2_val)
-    ,.imul_rd_i(exe_r.instruction.rd)
+    ,.imul_rd_i(exe_r.instruction_f.rd)
 
     ,.fp_v_i(fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
     ,.fpu_float_op_i(fp_exe_ctrl_r.fp_decode.fpu_float_op)
@@ -1276,6 +1292,7 @@ module vanilla_core
       pc_plus4: {{(data_width_p-pc_width_lp-2){1'b0}}, pc_plus4, 2'b0},
       pred_or_jump_addr: {{(data_width_p-pc_width_lp-2){1'b0}}, pred_or_jump_addr, 2'b0},
       instruction: instruction,
+      instruction_f: instruction_f,
       decode: decode,
       fp_decode: fp_decode,
       icache_miss: 1'b0,
@@ -1305,6 +1322,7 @@ module vanilla_core
           pc_plus4: {{(data_width_p-pc_width_lp-2){1'b0}}, pc_plus4, 2'b0},
           pred_or_jump_addr: '0,
           instruction: '0,
+          instruction_f: '0,
           decode: '0,
           fp_decode: '0,
           icache_miss: 1'b1,
@@ -1323,40 +1341,79 @@ module vanilla_core
   // regfile read
   wire rf_read_en = ~(stall_id | stall_all);
   assign int_rf_read[0] = id_n.decode.read_rs1 & rf_read_en;
-  assign int_rf_read[1] = id_n.decode.read_rs2 & rf_read_en;
+  assign int_rf_read[1] = id_n.decode.read_rs1_f & rf_read_en;
+  assign int_rf_read[2] = id_n.decode.read_rs2 & rf_read_en;
   assign float_rf_read[0] = id_n.decode.read_frs1 & rf_read_en;
   assign float_rf_read[1] = id_n.decode.read_frs2 & rf_read_en;
   assign float_rf_read[2] = id_n.decode.read_frs3 & rf_read_en;
 
   // helpful control signals;
   wire [reg_addr_width_lp-1:0] id_rs1 = id_r.instruction.rs1;
+  wire [reg_addr_width_lp-1:0] id_rs1_f = id_r.instruction_f.rs1;
   wire [reg_addr_width_lp-1:0] id_rs2 = id_r.instruction.rs2;
-  wire [reg_addr_width_lp-1:0] id_rs3 = id_r.instruction[31:27];
+  wire [reg_addr_width_lp-1:0] id_frs2_s = id_r.instruction.rs2;
+  wire [reg_addr_width_lp-1:0] id_rs3 = id_r.instruction_f[31:27];
+
   wire [reg_addr_width_lp-1:0] id_rd = id_r.instruction.rd;
+  wire [reg_addr_width_lp-1:0] id_rd_f = id_r.instruction_f.rd;
+
   wire remote_req_in_exe = lsu_remote_req_v_lo;
   wire local_load_in_exe = lsu_dmem_v_lo & ~lsu_dmem_w_lo;
+
   wire id_rs1_non_zero = id_rs1 != '0;
+  wire id_rs1_f_non_zero = id_rs1_f != '0;
   wire id_rs2_non_zero = id_rs2 != '0;
+  wire id_rs2_s_non_zero = id_frs2_s != '0;
   wire id_rd_non_zero = id_rd != '0;
+  wire id_rd_f_non_zero = id_rd_f != '0;
+
   wire int_remote_load_in_exe = remote_req_in_exe & exe_r.decode.is_load_op & exe_r.decode.write_rd;
   wire float_remote_load_in_exe = remote_req_in_exe & exe_r.decode.is_load_op & exe_r.decode.write_frd;
   wire fdiv_fsqrt_in_fp_exe = fp_exe_ctrl_r.fp_decode.is_fdiv_op | fp_exe_ctrl_r.fp_decode.is_fsqrt_op;
   wire remote_credit_pending = (out_credits_used_i != '0);
-  wire id_rs1_equal_exe_rd = (id_rs1 == exe_r.instruction.rd);
-  wire id_rs2_equal_exe_rd = (id_rs2 == exe_r.instruction.rd);
-  wire id_rs3_equal_exe_rd = (id_rs3 == exe_r.instruction.rd);
-  wire id_rs1_equal_fp_exe_rd = (id_rs1 == fp_exe_ctrl_r.rd);
-  wire id_rs2_equal_fp_exe_rd = (id_rs2 == fp_exe_ctrl_r.rd);
-  wire id_rs3_equal_fp_exe_rd = (id_rs3 == fp_exe_ctrl_r.rd);
-  wire id_rs1_equal_mem_rd = (id_rs1 == mem_ctrl_r.rd_addr);
-  wire id_rs2_equal_mem_rd = (id_rs2 == mem_ctrl_r.rd_addr);
-  wire id_rs3_equal_mem_rd = (id_rs3 == mem_ctrl_r.rd_addr);
-  wire id_rs1_equal_wb_rd = (id_rs1 == wb_ctrl_r.rd_addr);
-  wire id_rs2_equal_wb_rd = (id_rs2 == wb_ctrl_r.rd_addr);
+
+  //             rs1 rs1_f rs2 frs2_s rs3
+  // exe_rd
+  // exe_rd_f
+  // fp_exe_rd
+  // fp_exe_rd_l
+  // mem_rd
+  // mem_rd_f
+  // mem_rd_l
+  // wb_rd
+  // wb_rd_f
+  // wb_rd_l
+
+
+  logic [4:0][9:0] r_eq;
+  equality_matrix #(
+    .width_p(reg_addr_width_lp)
+    ,.num_col_p(5)
+    ,.num_row_p(10)
+  ) eq_matrix (
+    .col_i({id_rs1, id_rs1_f, id_rs2, id_frs2_s, id_rs3})
+    ,.row_i({
+      exe_r.instruction.rd
+      , exe_r.instruction_f.rd
+      , fp_exe_ctrl_r.rd
+      , fp_exe_ctrl_r.rd_f
+      , mem_ctrl_r.rd_addr
+      , mem_ctrl_r.rd_addr_l
+      , mem_ctrl_r.rd_addr_f
+      , wb_ctrl_r.rd_addr
+      , wb_ctrl_r.rd_addr_f
+      , wb_ctrl_r.rd_addr_l
+    })
+    ,.eq_o(r_eq)
+  );
 
   // stall_depend_long_op (idiv, fdiv, remote_load, atomic)
-  wire rs1_sb_clear_now = id_r.decode.read_rs1 & (id_rs1 == int_sb_clear_id) & int_sb_clear & id_rs1_non_zero; 
-  wire frs2_sb_clear_now = id_r.decode.read_frs2 & (id_rs2 == float_sb_clear_id) & float_sb_clear;
+  wire rs1_sb_clear_now = 
+      id_r.decode.read_rs1   & (id_rs1 == int_sb_clear_id)   & int_sb_clear & id_rs1_non_zero
+    | id_r.decode.read_rs1_f & (id_rs1_f == int_sb_clear_id) & int_sb_clear & id_rs1_f_non_zero;
+  wire frs2_sb_clear_now =
+      id_r.decode.read_frs2   & (id_rs2 == float_sb_clear_id)    & float_sb_clear
+    | id_r.decode.read_frs2_s & (id_frs2_s == float_sb_clear_id) & float_sb_clear;
 
   assign stall_depend_long_op = (int_dependency | float_dependency)
     | (id_r.decode.is_fp_op
@@ -1366,50 +1423,61 @@ module vanilla_core
 
   // stall_depend_local_load (lw, flw, lr, lr.aq)
   assign stall_depend_local_load = local_load_in_exe &
-    ((id_r.decode.read_rs1  & id_rs1_equal_exe_rd & exe_r.decode.write_rd & id_rs1_non_zero)
-    |(id_r.decode.read_rs2  & id_rs2_equal_exe_rd & exe_r.decode.write_rd & id_rs2_non_zero)
-    |(id_r.decode.read_frs1 & id_rs1_equal_exe_rd & exe_r.decode.write_frd)
-    |(id_r.decode.read_frs2 & id_rs2_equal_exe_rd & exe_r.decode.write_frd)
-    |(id_r.decode.read_frs3 & id_rs3_equal_exe_rd & exe_r.decode.write_frd));
+    ((id_r.decode.read_rs1   & r_eq[0][0] & exe_r.decode.write_rd   & id_rs1_non_zero)
+    |(id_r.decode.read_rs1_f & r_eq[1][0] & exe_r.decode.write_rd   & id_rs1_f_non_zero)
+    |(id_r.decode.read_rs2   & r_eq[2][0] & exe_r.decode.write_rd   & id_rs2_non_zero)
+
+    |(id_r.decode.read_frs1   & r_eq[0][1] & exe_r.decode.write_frd_l)
+    |(id_r.decode.read_frs2   & r_eq[2][1] & exe_r.decode.write_frd_l)
+    |(id_r.decode.read_frs2_s & r_eq[3][1] & exe_r.decode.write_frd_l)
+    |(id_r.decode.read_frs3   & r_eq[4][1] & exe_r.decode.write_frd_l));
 
 
   // stall_depend_imul
   assign stall_depend_imul = exe_r.decode.is_imul_op &
-    ((id_r.decode.read_rs1 & id_rs1_equal_exe_rd & id_rs1_non_zero)
-    |(id_r.decode.read_rs2 & id_rs2_equal_exe_rd & id_rs2_non_zero));
+    ((id_r.decode.read_rs1   & r_eq[0][0] & exe_r.decode.write_rd   & id_rs1_non_zero)
+    |(id_r.decode.read_rs1_f & r_eq[1][0] & exe_r.decode.write_rd   & id_rs1_f_non_zero)
+    |(id_r.decode.read_rs2   & r_eq[2][0] & exe_r.decode.write_rd   & id_rs2_non_zero)
+    |(id_r.decode.read_rs1   & r_eq[0][3] & exe_r.decode.write_rd_f & id_rs1_non_zero)
+    |(id_r.decode.read_rs1_f & r_eq[1][3] & exe_r.decode.write_rd_f & id_rs1_f_non_zero)
+    |(id_r.decode.read_rs2   & r_eq[2][3] & exe_r.decode.write_rd_f & id_rs2_non_zero));
 
 
   // stall_bypass
   wire stall_bypass_fp_frs = 
-     (id_r.decode.read_frs1 & id_rs1_equal_fp_exe_rd & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
-    |(id_r.decode.read_frs2 & id_rs2_equal_fp_exe_rd & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
-    |(id_r.decode.read_frs3 & id_rs3_equal_fp_exe_rd & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
-    |(id_r.decode.read_frs1 & (id_rs1 == fpu1_rd_r) & fpu1_v_r)
-    |(id_r.decode.read_frs2 & (id_rs2 == fpu1_rd_r) & fpu1_v_r)
-    |(id_r.decode.read_frs3 & (id_rs3 == fpu1_rd_r) & fpu1_v_r)
-    |(id_r.decode.read_frs1 & id_rs1_equal_mem_rd & mem_ctrl_r.write_frd)
-    |(id_r.decode.read_frs2 & id_rs2_equal_mem_rd & mem_ctrl_r.write_frd)
-    |(id_r.decode.read_frs3 & id_rs3_equal_mem_rd & mem_ctrl_r.write_frd);
+     (id_r.decode.read_frs1   & r_eq[0][2] & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
+    |(id_r.decode.read_frs2   & r_eq[2][2] & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
+    |(id_r.decode.read_frs2_s & r_eq[3][2] & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
+    |(id_r.decode.read_frs3   & r_eq[4][2] & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
+    |(id_r.decode.read_frs1   & (id_rs1 == fpu1_rd_r)   & fpu1_v_r)
+    |(id_r.decode.read_frs2   & (id_rs2 == fpu1_rd_r)   & fpu1_v_r)
+    |(id_r.decode.read_frs2_s & (id_frs2_s == fpu1_rd_r) & fpu1_v_r)
+    |(id_r.decode.read_frs3   & (id_rs3 == fpu1_rd_r)   & fpu1_v_r)
+    |(id_r.decode.read_frs1   & r_eq[0][6] & mem_ctrl_r.write_frd)
+    |(id_r.decode.read_frs2   & r_eq[2][6] & mem_ctrl_r.write_frd)
+    |(id_r.decode.read_frs2   & r_eq[3][6] & mem_ctrl_r.write_frd)
+    |(id_r.decode.read_frs3   & r_eq[4][6] & mem_ctrl_r.write_frd);
 
-  wire stall_bypass_fp_rs1 = (id_r.decode.read_rs1 & id_rs1_non_zero) &
-    ((id_rs1_equal_fp_exe_rd & fp_exe_ctrl_r.fp_decode.is_fpu_int_op)
-    |((id_rs1 == imul_rd_lo) & imul_v_lo)
-    |(id_rs1_equal_exe_rd & exe_r.decode.write_rd)
-    |(id_rs1_equal_mem_rd & mem_ctrl_r.write_rd)
-    |(id_rs1_equal_wb_rd & wb_ctrl_r.write_rd));
+  wire stall_bypass_fp_rs1 = (id_r.decode.read_rs1_f & id_rs1_f_non_zero) &
+    ((r_eq[1][3] & fp_exe_ctrl_r.fp_decode.is_fpu_int_op)
+    |((id_rs1_f == imul_rd_lo) & imul_v_lo)
+    |(r_eq[1][0] & exe_r.decode.write_rd)
+    |(r_eq[1][4] & mem_ctrl_r.write_rd)
+    |(r_eq[1][5] & mem_ctrl_r.write_rd_f)
+    |(r_eq[1][7] & wb_ctrl_r.write_rd)
+    |(r_eq[1][8] & wb_ctrl_r.write_rd_f));
   
 
   wire stall_bypass_int_frs2 = id_r.decode.read_frs2 &
-    ((id_rs2_equal_fp_exe_rd & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
-    |((id_rs2 == fpu1_rd_r) & fpu1_v_r)
-    |((id_rs2 == fpu_float_rd_lo) & fpu_float_v_lo)
-    |(id_rs2_equal_mem_rd & mem_ctrl_r.write_frd)
-    |((id_rs2 == flw_wb_ctrl_r.rd_addr) & flw_wb_ctrl_r.valid));
+    ((r_eq[3][2] & fp_exe_ctrl_r.fp_decode.is_fpu_float_op)
+    |((id_frs2_s == fpu1_rd_r) & fpu1_v_r)
+    |((id_frs2_s == fpu_float_rd_lo) & fpu_float_v_lo)
+    |(r_eq[3][4] & mem_ctrl_r.write_frd)
+    |(r_eq[3][6] & mem_ctrl_r.write_frd_l)
+    |((id_frs2_s == flw_wb_ctrl_r.rd_addr) & flw_wb_ctrl_r.valid));
     
 
-  assign stall_bypass = id_r.decode.is_fp_op
-    ? (stall_bypass_fp_frs | stall_bypass_fp_rs1)
-    : stall_bypass_int_frs2;
+  assign stall_bypass = stall_bypass_fp_frs | stall_bypass_fp_rs1| stall_bypass_int_frs2;
 
   // stall_lr_aq
   assign stall_lr_aq = id_r.decode.is_lr_aq_op & (reserved_r | lsu_reserve_lo) & ~break_reserve;
@@ -1485,9 +1553,10 @@ module vanilla_core
 
   // FP_EXE forwarding mux control logic
   //
-  assign select_rs1_to_fp_exe = id_r.decode.read_rs1;
+  assign select_rs1_to_fp_exe = id_r.decode.read_rs1_f;
   assign frs1_forward_v = id_r.decode.read_frs1 & (id_rs1 == float_rf_waddr) & float_rf_wen;
   assign frs2_forward_v = id_r.decode.read_frs2 & (id_rs2 == float_rf_waddr) & float_rf_wen;
+  assign frs2_s_forward_v = id_r.decode.read_frs2_s & (id_frs2_s == float_rf_waddr) & float_rf_wen;
   assign frs3_forward_v = id_r.decode.read_frs3 & (id_rs3 == float_rf_waddr) & float_rf_wen;
 
   // EXE forwarding mux control logic
@@ -1495,18 +1564,21 @@ module vanilla_core
   // [1] = mem
   // [2] = wb
   logic [2:0] has_forward_data_rs1;
+  logic [2:0] has_forward_data_rs1_f;
   logic [2:0] has_forward_data_rs2;
 
   assign has_forward_data_rs1[0] =
-    ((exe_r.decode.write_rd & id_rs1_equal_exe_rd)
-    |(fp_exe_ctrl_r.fp_decode.is_fpu_int_op & id_rs1_equal_fp_exe_rd))
+    ((exe_r.decode.write_rd & r_eq[0][0])
+    |(fp_exe_ctrl_r.fp_decode.is_fpu_int_op & exe_r.decode.write_rd_f & r_eq[0][1]))
     & id_rs1_non_zero;
   assign has_forward_data_rs1[1] =
-    ((mem_ctrl_r.write_rd & id_rs1_equal_mem_rd)
+    ((mem_ctrl_r.write_rd & r_eq[0][4])
+    |(mem_ctrl_r.write_rd_f & r_eq[0][5])
     |(imul_v_lo & (imul_rd_lo == id_rs1)))
     & id_rs1_non_zero;
   assign has_forward_data_rs1[2] =
-    wb_ctrl_r.write_rd & id_rs1_equal_wb_rd
+    ((wb_ctrl_r.write_rd & r_eq[0][7])
+    |(wb_ctrl_r.write_rd_f & r_eq[0][8]))
     & id_rs1_non_zero;
 
   bsg_priority_encode #(
@@ -1518,16 +1590,41 @@ module vanilla_core
     ,.v_o(rs1_forward_v)
   );
 
+  assign has_forward_data_rs1_f[0] =
+    ((exe_r.decode.write_rd & r_eq[1][0])
+    |(fp_exe_ctrl_r.fp_decode.is_fpu_int_op & exe_r.decode.write_rd_f & r_eq[1][1]))
+    & id_rs1_f_non_zero;
+  assign has_forward_data_rs1_f[1] =
+    ((mem_ctrl_r.write_rd & r_eq[1][4])
+    |(mem_ctrl_r.write_rd_f & r_eq[1][5])
+    |(imul_v_lo & (imul_rd_lo == id_rs1_f)))
+    & id_rs1_f_non_zero;
+  assign has_forward_data_rs1_f[2] =
+    ((wb_ctrl_r.write_rd & r_eq[1][7])
+    |(wb_ctrl_r.write_rd_f & r_eq[1][8]))
+    & id_rs1_f_non_zero;
+
+  bsg_priority_encode #(
+    .width_p(3)
+    ,.lo_to_hi_p(1)
+  ) rs1_f_forward_pe0 (
+    .i(has_forward_data_rs1_f)
+    ,.addr_o(rs1_f_forward_sel)
+    ,.v_o(rs1_f_forward_v)
+  );
+
   assign has_forward_data_rs2[0] =
-    ((exe_r.decode.write_rd & id_rs2_equal_exe_rd)
-    |(fp_exe_ctrl_r.fp_decode.is_fpu_int_op & id_rs2_equal_fp_exe_rd))
-    & id_rs2_non_zero;
+    ((exe_r.decode.write_rd & r_eq[2][0])
+    |(fp_exe_ctrl_r.fp_decode.is_fpu_int_op & exe_r.decode.write_rd_f & r_eq[2][1]))
+    & id_rs1_non_zero;
   assign has_forward_data_rs2[1] =
-    ((mem_ctrl_r.write_rd & id_rs2_equal_mem_rd)
+    ((mem_ctrl_r.write_rd & r_eq[2][4])
+    |(mem_ctrl_r.write_rd_f & r_eq[2][5])
     |(imul_v_lo & (imul_rd_lo == id_rs2)))
     & id_rs2_non_zero;
   assign has_forward_data_rs2[2] =
-    wb_ctrl_r.write_rd & id_rs2_equal_wb_rd
+    ((wb_ctrl_r.write_rd & r_eq[2][7])
+    |(wb_ctrl_r.write_rd_f & r_eq[2][8]))
     & id_rs2_non_zero;
 
   bsg_priority_encode #(
@@ -1574,6 +1671,7 @@ module vanilla_core
       valid: id_r.valid,
       pred_or_jump_addr: id_r.pred_or_jump_addr,
       instruction: id_r.instruction,
+      instruction_f: id_r.instruction_f,
       decode: id_r.decode,
       rs1_val: rs1_val_to_exe,
       // rs2_val carries csr load values
@@ -1602,18 +1700,6 @@ module vanilla_core
         // for fp_op, we still want to keep track of npc_r.
         // so we set the valid and pc_plus4.
         exe_en = 1'b1;
-        exe_n = '{
-          pc_plus4: id_r.pc_plus4,
-          valid: id_r.valid,
-          pred_or_jump_addr: '0,
-          instruction: '0,
-          decode: '0,
-          rs1_val: '0,
-          rs2_val: '0,
-          mem_addr_op2: '0,
-          icache_miss: 1'b0,
-          branch_predicted_taken: 1'b0
-        };
       end
       else begin
         exe_en = 1'b1;
@@ -1644,7 +1730,8 @@ module vanilla_core
 
   always_comb begin
     fp_exe_ctrl_n = '{
-      rd: id_r.instruction.rd,
+      rd: id_r.instruction_f.rd,
+      rd_f: id_r.instruction.rd,
       fp_decode: id_r.fp_decode,
       rm: fpu_rm
     };
@@ -1685,7 +1772,7 @@ module vanilla_core
   assign float_sb_score = ~stall_all & (fdiv_fsqrt_in_fp_exe | float_remote_load_in_exe);
   assign float_sb_score_id = fdiv_fsqrt_in_fp_exe
     ? fp_exe_ctrl_r.rd
-    : exe_r.instruction.rd;
+    : exe_r.instruction_f.rd;
 
 
   // EXE,FP_EXE -> MEM
@@ -1693,8 +1780,12 @@ module vanilla_core
     // common case
     mem_ctrl_n = '{
       rd_addr: exe_r.instruction.rd,
+      rd_addr_f: exe_r.instruction_f.rd,
+      rd_addr_l: exe_r.instruction.rd,
       write_rd: exe_r.decode.write_rd,
+      write_rd_f: exe_r.decode.write_rd_f,
       write_frd: exe_r.decode.write_frd,
+      write_frd_l: exe_r.decode.write_frd_l,
       is_byte_op: exe_r.decode.is_byte_op,
       is_hex_op: exe_r.decode.is_hex_op,
       is_load_unsigned: exe_r.decode.is_load_unsigned,
@@ -1723,17 +1814,6 @@ module vanilla_core
       fcsr_fflags_v_li[0] = 1'b1;
       mem_ctrl_en = 1'b1;
       mem_data_en = 1'b1;
-      mem_ctrl_n = '{
-        rd_addr: fp_exe_ctrl_r.rd,
-        write_rd: 1'b1,
-        write_frd: 1'b0,
-        is_byte_op: 1'b0,
-        is_hex_op: 1'b0,
-        is_load_unsigned: 1'b0,
-        local_load: 1'b0,
-        byte_sel: '0,
-        icache_miss: 1'b0
-      };      
       mem_data_n = '{
         exe_result: fpu_int_result_lo
       };
@@ -1803,7 +1883,11 @@ module vanilla_core
   // MEM -> WB
   always_comb begin
     wb_ctrl_n.write_rd = 1'b0;
+    wb_ctrl_n.write_rd_f = 1'b0;
+    wb_ctrl_n.write_rd_l = 1'b0;
     wb_ctrl_n.rd_addr = '0;
+    wb_ctrl_n.rd_addr_f = '0;
+    wb_ctrl_n.rd_addr_l = '0;
     wb_data_n.rf_data = '0;
     wb_ctrl_n.icache_miss = 1'b0;
     wb_ctrl_n.clear_sb = 1'b0;
@@ -1962,6 +2046,7 @@ module vanilla_core
   // synopsys translate_off
   always_ff @ (negedge clk_i) begin
     if (~reset_i) begin
+      $write("PC: %8x, PCN: %8x, Dual: %b, Instruction: %8x, Instruction Float: %8x\n", pc_r, pc_n, dual_issue, instruction, instruction_f);
 
       if (idiv_v_li) begin
         assert(idiv_ready_and_lo) else $error("idiv_op issued when idiv is not ready.");
